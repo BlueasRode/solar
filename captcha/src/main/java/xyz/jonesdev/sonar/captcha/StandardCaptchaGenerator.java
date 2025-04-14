@@ -17,15 +17,10 @@
 
 package xyz.jonesdev.sonar.captcha;
 
-import com.jhlabs.image.FBMFilter;
-import com.jhlabs.image.SmearFilter;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import xyz.jonesdev.sonar.api.fallback.captcha.CaptchaGenerator;
-import xyz.jonesdev.sonar.captcha.filters.CurvesOverlayFilter;
-import xyz.jonesdev.sonar.captcha.filters.NoiseOverlayFilter;
 
 import javax.imageio.ImageIO;
 import java.awt.*;
@@ -41,30 +36,8 @@ import java.util.Random;
 @Getter
 @RequiredArgsConstructor
 public final class StandardCaptchaGenerator implements CaptchaGenerator {
-  private static final CurvesOverlayFilter CURVES = new CurvesOverlayFilter(3);
-  //private static final CircleInverseFilter CIRCLES = new CircleInverseFilter(1, 30, 10);
-  private static final NoiseOverlayFilter NOISE = new NoiseOverlayFilter(1, 20);
-  private static final SmearFilter SMEAR = new SmearFilter();
-  private static final FBMFilter FBM = new FBMFilter();
   private static final Random RANDOM = new Random();
-  private static final Color[] COLORS = new Color[4];
-  private static final float[] COLOR_FRACTIONS = new float[COLORS.length];
-
-  static {
-    FBM.setAmount(0.6f);
-    FBM.setScale(15);
-
-    SMEAR.setShape(SmearFilter.SQUARES);
-    SMEAR.setDensity(0.1f);
-    SMEAR.setDistance(0);
-    SMEAR.setMix(0.35f);
-
-    // Create fractions based on the number of colors
-    for (int i = 0; i < COLOR_FRACTIONS.length; i++) {
-      COLOR_FRACTIONS[i] = (float) i / (COLOR_FRACTIONS.length - 1);
-    }
-  }
-
+  
   private final int width = 128, height = 128;
   private final @Nullable File background;
   private @Nullable BufferedImage backgroundImage;
@@ -74,47 +47,48 @@ public final class StandardCaptchaGenerator implements CaptchaGenerator {
     final BufferedImage image = createBackgroundImage();
     final Graphics2D graphics = image.createGraphics();
     graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-    // Draw characters and other effects on the image
-    applyRandomColorGradient(graphics);
+
+    // Rysowanie nagłówka
+    drawHeader(graphics);
+    
+    // Rysowanie znaków CAPTCHA
     drawCharacters(graphics, answer);
-    CURVES.transform(image, graphics);
-    NOISE.transform(image);
-    //SMEAR.filter(image, image);
-    //CIRCLES.transform(image); // TODO: check if the text is still easy to read after this
-    // Make sure to dispose the graphics instance
+    
+    // Rysowanie stopki
+    drawFooter(graphics);
+    
     graphics.dispose();
     return image;
   }
 
   private @NotNull BufferedImage createBackgroundImage() {
-    // Create a new image buffer with a 3-byte color spectrum
     final BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_3BYTE_BGR);
-    if (background == null) {
-      // Fill the entire image with a noise texture
-      return FBM.filter(image, image);
-    }
-    // Try to load the image from a file if it doesn't exist yet
-    if (backgroundImage == null) {
-      try {
-        backgroundImage = ImageIO.read(background);
-      } catch (IOException exception) {
-        throw new IllegalStateException("Could not read background image", exception);
-      }
-    }
-    image.createGraphics().drawImage(backgroundImage, 0, 0, Color.WHITE, null);
+    final Graphics2D graphics = image.createGraphics();
+    
+    // Ustawienie jednolitego szarego tła
+    graphics.setColor(new Color(150, 150, 150)); // Szary kolor
+    graphics.fillRect(0, 0, width, height);
+    
+    graphics.dispose();
     return image;
   }
 
-  private void applyRandomColorGradient(final @NotNull Graphics2D graphics) {
-    // Randomize the colors for the gradient effect
-    for (int i = 0; i < COLORS.length; i++) {
-      final float random = 0.9f + RANDOM.nextFloat() * 0.1f;
-      COLORS[i] = Color.getHSBColor(RANDOM.nextFloat(), random, random);
-    }
+  private void drawHeader(final @NotNull Graphics2D graphics) {
+    graphics.setColor(Color.BLACK);
+    graphics.setFont(new Font("Arial", Font.BOLD, 12));
+    String header = "EyfenCord - Captcha";
+    FontMetrics fm = graphics.getFontMetrics();
+    int x = (width - fm.stringWidth(header)) / 2;
+    graphics.drawString(header, x, 20);
+  }
 
-    // Apply the random gradient effect
-    graphics.setPaint(new LinearGradientPaint(0, 0, width, height,
-      COLOR_FRACTIONS, COLORS, MultipleGradientPaint.CycleMethod.REFLECT));
+  private void drawFooter(final @NotNull Graphics2D graphics) {
+    graphics.setColor(Color.BLACK);
+    graphics.setFont(new Font("Arial", Font.PLAIN, 10));
+    String footer = "WPISZ KOD NA CZACIE";
+    FontMetrics fm = graphics.getFontMetrics();
+    int x = (width - fm.stringWidth(footer)) / 2;
+    graphics.drawString(footer, x, height - 10);
   }
 
   private void drawCharacters(final @NotNull Graphics2D graphics,
@@ -122,50 +96,30 @@ public final class StandardCaptchaGenerator implements CaptchaGenerator {
     final FontRenderContext ctx = graphics.getFontRenderContext();
     final GlyphVector[] glyphs = new GlyphVector[answer.length];
 
+    // Ustawienie prostego fontu
     for (int i = 0; i < answer.length; i++) {
-      // Create a glyph vector for the character with a random font
-      final Font font = StandardTTFFontProvider.FONTS[RANDOM.nextInt(StandardTTFFontProvider.FONTS.length)];
+      final Font font = new Font("Arial", Font.BOLD, 20);
       glyphs[i] = font.createGlyphVector(ctx, String.valueOf(answer[i]));
     }
 
-    final double scalingXY = 5 - Math.min(answer.length, 5) * 0.65;
+    final double scalingXY = 1.5; // Mniejsze skalowanie dla czytelności
 
-    // Calculate first X and Y positions
+    // Obliczanie pozycji początkowej
     final double totalWidth = Arrays.stream(glyphs)
-      .mapToDouble(glyph -> glyph.getLogicalBounds().getWidth() * scalingXY - 1)
+      .mapToDouble(glyph -> glyph.getLogicalBounds().getWidth() * scalingXY)
       .sum();
-    double beginX = Math.max(Math.min(width / 2D - totalWidth / 2D, totalWidth), 0);
-    double beginY = (height + StandardTTFFontProvider.STANDARD_FONT_SIZE / 2D) / 2D + scalingXY;
+    double beginX = (width - totalWidth) / 2;
+    double beginY = (height / 2) + 10;
 
-    // Draw each glyph one by one
+    // Rysowanie znaków
+    graphics.setColor(Color.BLACK);
     for (final GlyphVector glyph : glyphs) {
       final AffineTransform transformation = AffineTransform.getTranslateInstance(beginX, beginY);
-      // Shear the glyph by a random amount
-      final double shearXY = Math.sin(beginX + beginY) / 6;
-      transformation.shear(shearXY, shearXY);
-      // Scale the glyph to perfectly fit the image
       transformation.scale(scalingXY, scalingXY);
-      // Draw the glyph to the buffered image
       final Shape transformedShape = transformation.createTransformedShape(glyph.getOutline());
       graphics.fill(transformedShape);
-      // Draw a random outline around the glyph
-      if (RANDOM.nextFloat() < 0.25f) {
-        createGlyphOutline(graphics, transformedShape);
-      }
-      // Make sure the next glyph isn't drawn at the same position
-      beginX += glyph.getVisualBounds().getWidth() * scalingXY + 2;
-      beginY += -10 + RANDOM.nextFloat() * 20;
+      beginX += glyph.getVisualBounds().getWidth() * scalingXY + 5; // Mniejszy odstęp między znakami
+      beginY += -5 + RANDOM.nextFloat() * 10; // Lekkie losowe przesunięcie w pionie
     }
-  }
-
-  private void createGlyphOutline(final @NotNull Graphics2D graphics, final @NotNull Shape shape) {
-    final float txy = 1.25f + RANDOM.nextFloat();
-    final float width = 1 + RANDOM.nextFloat();
-
-    // Create a randomly translated and stroked shape based on the original glyph shape
-    final AffineTransform translation = AffineTransform.getTranslateInstance(txy, txy);
-    final Shape strokedShape = new BasicStroke(width).createStrokedShape(shape);
-
-    graphics.fill(translation.createTransformedShape(strokedShape));
   }
 }
