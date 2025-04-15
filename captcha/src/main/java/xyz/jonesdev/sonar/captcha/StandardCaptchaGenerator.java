@@ -1,29 +1,11 @@
-/*
- * Copyright (C) 2025 Sonar Contributors
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
- */
-
 package xyz.jonesdev.sonar.captcha;
 
-import lombok.Getter;
-import lombok.RequiredArgsConstructor;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
-
-import javax.imageio.ImageIO;
-import java.awt.*;
+import java.awt.BasicStroke;
+import java.awt.Color;
+import java.awt.Font;
+import java.awt.Graphics2D;
+import java.awt.RenderingHints;
+import java.awt.Shape;
 import java.awt.font.FontRenderContext;
 import java.awt.font.GlyphVector;
 import java.awt.geom.AffineTransform;
@@ -31,95 +13,111 @@ import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.Objects;
 import java.util.Random;
+import javax.imageio.ImageIO;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+import xyz.jonesdev.sonar.api.fallback.captcha.CaptchaGenerator;
 
-@Getter
-@RequiredArgsConstructor
 public final class StandardCaptchaGenerator implements CaptchaGenerator {
-  private static final Random RANDOM = new Random();
-  
-  private final int width = 128, height = 128;
-  private final @Nullable File background;
-  private @Nullable BufferedImage backgroundImage;
+    private static final Random RANDOM = new Random();
+    private final int width = 128;
+    private final int height = 128;
+    private final @Nullable File background;
+    private @Nullable BufferedImage backgroundImage;
 
-  @Override
-  public @NotNull BufferedImage createImage(final char @NotNull [] answer) {
-    final BufferedImage image = createBackgroundImage();
-    final Graphics2D graphics = image.createGraphics();
-    graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+    public @NotNull BufferedImage createImage(char @NotNull [] answer) {
+        BufferedImage image = new BufferedImage(128, 128, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D graphics = image.createGraphics();
+        graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 
-    // Rysowanie nagłówka
-    drawHeader(graphics);
-    
-    // Rysowanie znaków CAPTCHA
-    drawCharacters(graphics, answer);
-    
-    // Rysowanie stopki
-    drawFooter(graphics);
-    
-    graphics.dispose();
-    return image;
-  }
+        // Set a solid background color (gray to match the image)
+        graphics.setColor(new Color(150, 150, 150)); // Gray background
+        graphics.fillRect(0, 0, 128, 128);
 
-  private @NotNull BufferedImage createBackgroundImage() {
-    final BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_3BYTE_BGR);
-    final Graphics2D graphics = image.createGraphics();
-    
-    // Ustawienie jednolitego szarego tła
-    graphics.setColor(new Color(150, 150, 150)); // Szary kolor
-    graphics.fillRect(0, 0, width, height);
-    
-    graphics.dispose();
-    return image;
-  }
+        // Draw the border (brownish color to match the image)
+        graphics.setColor(new Color(139, 69, 19)); // Brown border
+        graphics.setStroke(new BasicStroke(5));
+        graphics.drawRect(2, 2, 124, 124);
 
-  private void drawHeader(final @NotNull Graphics2D graphics) {
-    graphics.setColor(Color.BLACK);
-    graphics.setFont(new Font("Arial", Font.BOLD, 12));
-    String header = "EyfenCord - Captcha";
-    FontMetrics fm = graphics.getFontMetrics();
-    int x = (width - fm.stringWidth(header)) / 2;
-    graphics.drawString(header, x, 20);
-  }
+        // Draw static text "LiteCore - Captcha" at the top
+        graphics.setColor(Color.BLACK);
+        graphics.setFont(new Font("Arial", Font.BOLD, 12));
+        graphics.drawString("LiteCore - Captcha", 10, 20);
 
-  private void drawFooter(final @NotNull Graphics2D graphics) {
-    graphics.setColor(Color.BLACK);
-    graphics.setFont(new Font("Arial", Font.PLAIN, 10));
-    String footer = "WPISZ KOD NA CZACIE";
-    FontMetrics fm = graphics.getFontMetrics();
-    int x = (width - fm.stringWidth(footer)) / 2;
-    graphics.drawString(footer, x, height - 10);
-  }
+        // Draw the CAPTCHA characters
+        this.drawCharacters(graphics, answer);
 
-  private void drawCharacters(final @NotNull Graphics2D graphics,
-                              final char @NotNull [] answer) {
-    final FontRenderContext ctx = graphics.getFontRenderContext();
-    final GlyphVector[] glyphs = new GlyphVector[answer.length];
+        // Draw static text "WPISZ KOD NA CZACIE" at the bottom
+        graphics.setFont(new Font("Arial", Font.PLAIN, 10));
+        graphics.drawString("WPISZ KOD NA CZACIE", 10, 115);
 
-    // Ustawienie prostego fontu
-    for (int i = 0; i < answer.length; i++) {
-      final Font font = new Font("Arial", Font.BOLD, 20);
-      glyphs[i] = font.createGlyphVector(ctx, String.valueOf(answer[i]));
+        // Draw the red bar with white circles at the bottom
+        graphics.setColor(Color.RED);
+        graphics.fillRect(0, 118, 128, 10); // Red bar
+        graphics.setColor(Color.WHITE);
+        for (int i = 0; i < 10; i++) {
+            graphics.fillOval(10 + i * 12, 120, 5, 5); // Small white circles
+        }
+
+        graphics.dispose();
+        return image;
     }
 
-    final double scalingXY = 1.5; // Mniejsze skalowanie dla czytelności
+    private void drawCharacters(@NotNull Graphics2D graphics, char @NotNull [] answer) {
+        FontRenderContext ctx = graphics.getFontRenderContext();
+        GlyphVector[] glyphs = new GlyphVector[answer.length];
 
-    // Obliczanie pozycji początkowej
-    final double totalWidth = Arrays.stream(glyphs)
-      .mapToDouble(glyph -> glyph.getLogicalBounds().getWidth() * scalingXY)
-      .sum();
-    double beginX = (width - totalWidth) / 2;
-    double beginY = (height / 2) + 10;
+        for (int i = 0; i < answer.length; ++i) {
+            Font font = StandardTTFFontProvider.FONTS[RANDOM.nextInt(StandardTTFFontProvider.FONTS.length)];
+            glyphs[i] = font.createGlyphVector(ctx, String.valueOf(answer[i]));
+        }
 
-    // Rysowanie znaków
-    graphics.setColor(Color.BLACK);
-    for (final GlyphVector glyph : glyphs) {
-      final AffineTransform transformation = AffineTransform.getTranslateInstance(beginX, beginY);
-      transformation.scale(scalingXY, scalingXY);
-      final Shape transformedShape = transformation.createTransformedShape(glyph.getOutline());
-      graphics.fill(transformedShape);
-      beginX += glyph.getVisualBounds().getWidth() * scalingXY + 5; // Mniejszy odstęp między znakami
-      beginY += -5 + RANDOM.nextFloat() * 10; // Lekkie losowe przesunięcie w pionie
+        double scalingXY = 5.0 - (double)Math.min(answer.length, 5) * 0.65;
+        double totalWidth = Arrays.stream(glyphs).mapToDouble((glyphx) -> {
+            return glyphx.getLogicalBounds().getWidth() * scalingXY - 1.0;
+        }).sum();
+        double beginX = Math.max(Math.min(64.0 - totalWidth / 2.0, totalWidth), 0.0);
+        double beginY = 70.25 + scalingXY;
+
+        graphics.setColor(Color.BLACK); // Black text for CAPTCHA characters
+        GlyphVector[] var13 = glyphs;
+        int var14 = glyphs.length;
+
+        for (int var15 = 0; var15 < var14; ++var15) {
+            GlyphVector glyph = var13[var15];
+            AffineTransform transformation = AffineTransform.getTranslateInstance(beginX, beginY);
+            double shearXY = Math.sin(beginX + beginY) / 6.0;
+            transformation.shear(shearXY, shearXY);
+            transformation.scale(scalingXY, scalingXY);
+            Shape transformedShape = transformation.createTransformedShape(glyph.getOutline());
+            graphics.fill(transformedShape);
+
+            beginX += glyph.getVisualBounds().getWidth() * scalingXY + 2.0;
+            beginY += (double)(-10.0F + RANDOM.nextFloat() * 20.0F);
+        }
     }
-  }
+
+    public int getWidth() {
+        Objects.requireNonNull(this);
+        return 128;
+    }
+
+    public int getHeight() {
+        Objects.requireNonNull(this);
+        return 128;
+    }
+
+    public @Nullable File getBackground() {
+        return this.background;
+    }
+
+    public @Nullable BufferedImage getBackgroundImage() {
+        return this.backgroundImage;
+    }
+
+    public StandardCaptchaGenerator(@Nullable File background) {
+        this.background = background;
+    }
 }
